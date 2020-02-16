@@ -61,42 +61,45 @@ def sum_res(b, Y, X):
     return loss.sum()
     
 # Calculate the gradient of the loss
-def grad(f, b, Y, X):
+def grad(fun, theta, args, nobs):
     """
     Calculate the gradient with respect to the coefficient vector b.
 
     Parameters
     ----------
-    f : callable
+    fun : callable
         loss function.
     
-    b : array
+    theta : array
         Parameters for which we want to calculate the derivative.
     
-    Y : array
-        The dependent variable
+    args : tuple
+        Additional function inputs
     
-    X : array
-        The indipendent variables.
+    nobs : integer
+        The number of observations
 
     Returns
     -------
-    grad: array
-        The partial derivatives of f w.r.t. b for every observation in X and Y.
+    grad_array : array
+        The partial derivatives of f w.r.t. theta for every observation.
+        
+    grad_sum : array
+        Sum of the individual gradients.
 
     """
     
     # Calculate function values for each observation
-    grad_array = np.empty(X.shape)
+    grad_array = np.empty((nobs, theta.shape))
         
-    for i in range(len(Y)):
+    for i in range(len(nobs)):
         
-        grad_array[i, :] = approx_derivative(f, b, args = (Y[i, :], X[i, :]))
+        grad_array[i, :] = approx_derivative(fun, theta, args = args)
         
     return grad_array, grad_array.sum(axis = 0)
 
 # Test
-grad(res, b_start.reshape(10), Y, X)
+grad(res, b, args = (Y, X), nobs = 100)
 
 # Hessian matrix approximation
 def hess_approx(gradient):
