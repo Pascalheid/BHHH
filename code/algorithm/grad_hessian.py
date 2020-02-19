@@ -1,6 +1,5 @@
 # Test field minimization
 import numpy as np
-import scipy as sp
 from scipy.optimize._numdiff import approx_derivative
 
 # Generate data
@@ -10,105 +9,89 @@ X = np.random.randn(100, 10) * np.random.uniform(0.5, 4, (1, 10)) + \
 b_true = np.random.randn(10, 1)
 b_start = np.zeros((10, 1))
 Y = X.dot(b_true) + np.random.randn(100, 1)
+data = np.hstack((Y, X))
 
 # Mögliche Beispiele sind Logit, OLS, etc.
 
 # Define quadratic residual function
-def res(b, y, x):
+def res(b, data):
     """
     Calculate the squared residual for an observation and a given feature and 
     parameter vector.
     
     Parameters
-    ----------
-    y : scalar containing the dependent variable
-    
-    x : numpy (1 x p) array containing the independent variables
-    
-    b : numpy (p x 1) array containg the coefficient values
+    ----------    
+    b : numpy (p x 1) array 
+        containg the coefficient values
+        
+    data : ndarray
+        Array where the first column contains the dependent variable, while the
+        rest of the array contains independent variables.
 
     Returns
     -------
-    The individual loss function
+    The individual loss function value
 
     """
     
-    return ((y - x.dot(b))** 2)[0]
+    return ((data[0] - data[1:].dot(b))** 2)
 
-def sum_res(b, Y, X):
-    """
-    Return the sum of squared residuals
 
-    Parameters
-    ----------
-    b : numpy array (p x 1) containing the coefficient values.
-    
-    Y : numpy array (n x 1) containing the dependent variable's values.
-    
-    X : numpy array (n x p) containing the independent variable's values.
-
-    Returns
-    -------
-    nfloat: Sum of squared residuals.
-
-    """
-    loss = np.empty(len(Y))   # n dimensional vector
-    
-    for i in range(len(Y)):
-        
-        loss[i] = res(b, Y[i, :], X[i, :])
-        
-    return loss.sum()
-    
 # Calculate the gradient of the loss
-def grad(fun, theta, args, nobs):
+def approx_fprime_ind(fun, x0, data, args = (), kwargs = {}):
     """
-    Calculate the gradient with respect to the coefficient vector b.
+    Calculate the gradient with respect to the coefficient vector b for every
+    row in the data array.
 
     Parameters
     ----------
     fun : callable
         loss function.
     
-    theta : array
+    x0 : ndarray
         Parameters for which we want to calculate the derivative.
     
-    args : tuple
-        Additional function inputs
-    
-    nobs : integer
-        The number of observations
+    data : ndarray
+        Data on which to calculate the likelihood function.
 
+    args, kwargs : tuple and dict, optional
+        Additional function inputs. args is empty by default while kwargs 
+        contains the data array.
+    
     Returns
     -------
     grad_array : array
-        The partial derivatives of f w.r.t. theta for every observation.
+        The partial derivatives of f w.r.t. x0 for every observation.
         
-    grad_sum : array
-        Sum of the individual gradients.
 
     """
     
     # Calculate function values for each observation
-    grad_array = np.empty((nobs, theta.shape))
+    grad_array = np.empty((nobs, N))
         
-    for i in range(len(nobs)):
+    for i in range(nobs):
         
-        grad_array[i, :] = approx_derivative(fun, theta, args = args)
-        
-    return grad_array, grad_array.sum(axis = 0)
+        # Get more general type of indexing
+        grad_array[i, :] = approx_derivative(fun, 
+                                             x0, 
+                                             args = args, 
+                                             kwargs = kwargs.update(
+                                                 {"data" : data[i, :]}))
+                                                
+    return grad_array
 
 # Test
-grad(res, b, args = (Y, X), nobs = 100)
+grad(res, np.empty(10), data = data)
 
 # Hessian matrix approximation
-def hess_approx(gradient):
+def approx_hess_bhhh(grad_array):
     """
-    
+    Approximating the Hessian matrix by calculating the sum of the outer 
+    products of the gradients evaluated at each individual observation.
 
     Parameters
     ----------
-    gradient : ndarray
+    grad_array : ndarray
         An array containing the gradient of the objective function for every 
         individual.
 
@@ -120,13 +103,64 @@ def hess_approx(gradient):
 
     """
     
-    outer_pdt = np.empty((100, 10, 10))
+    outer_pdt = np.empty((nobs, N, N))
     
-    for i in range(gradient.shape[0]):
+    for i in range(nobs):
         
-        outer_pdt[i, :, :] = np.outer(gradient[i, :], gradient[i, :])
+        outer_pdt[i, :, :] = np.outer(grad_array[i, :], grad_array[i, :])
         
-    return outer_pdt.sum(axis = 0) / gradient.shape[0]
+    return outer_pdt.sum(axis = 0) / nobs
+
+# function to calculate sum
+def aggregate_fun(fun, data, args = (), kwargs = {}):
+    """
+    Calculate the sum of the function given for every 
+
+    Parameters
+    ----------
+    fun : callable fun(x, *args)
+        Objective function to aggregate over.
+    data : ndarray
+        Array containing the data over which to aggregate.
+    args : tuple, optional
+        Extra arguments passed to fun. The default is ().
+    kwargs : dict, optional
+        Extra arguments passed to fun. The default is {}.
+
+    Returns
+    -------
+    fun_agg : callable fun(x, *args)
+        Sum of the objective function evaluations
+
+    """
+    
+    fun_agg = np.empty(nobs)
+          
+    for i in range(nobs):
+        
+        fun_agg[i] = fun(data = data[i, :], *args, **kwargs)
+        
+    return fun_agg.sum()
+
+def aggregate_fprime(grad_array):
+    """
+    Sum over the individual gradients of the function given to 
+    approx_fprime_ind.
+
+    Parameters
+    ----------
+    grad_array : ndarray
+        Output of the function approx_fprime_ind.
+
+    Returns
+    -------
+    grad_aggregate : ndarray
+        Sum of the individual gradient evaluations
+
+    """
+    
+    return grad_array.sum(axis = 0)
+    
 
 # Implement algorithm
 # End the algorithm if the norm of the gradient is smaller than a certain 
