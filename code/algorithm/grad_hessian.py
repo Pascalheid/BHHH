@@ -1,5 +1,6 @@
 # Test field minimization
 import numpy as np
+import scipy.stats as stats
 from scipy.optimize._numdiff import approx_derivative
 
 # Generate data
@@ -45,15 +46,14 @@ def approx_fprime_ind(fun, x0, data, args = (), kwargs = {}):
 
     Parameters
     ----------
-    fun : callable
+    fun : callable fun(x, data, *args, **kwargs)
         loss function.
-    
     x0 : ndarray
         Parameters for which we want to calculate the derivative.
-    
+    epsilon : int or ndarray, optional
+        If fprime is approximated, use this value for the step size.
     data : ndarray
         Data on which to calculate the likelihood function.
-
     args, kwargs : tuple and dict, optional
         Additional function inputs. args is empty by default while kwargs 
         contains the data array.
@@ -68,20 +68,22 @@ def approx_fprime_ind(fun, x0, data, args = (), kwargs = {}):
     
     # Calculate function values for each observation
     grad_array = np.empty((nobs, N))
+    kwargs_temp = kwargs.copy()
         
     for i in range(nobs):
         
+        data_i = {"data" : data[i]}
+        kwargs_temp.update(data_i)
         # Get more general type of indexing
         grad_array[i, :] = approx_derivative(fun, 
                                              x0, 
                                              args = args, 
-                                             kwargs = kwargs.update(
-                                                 {"data" : data[i, :]}))
-                                                
+                                             kwargs = kwargs_temp)
+                                                        
     return grad_array
 
 # Test
-grad(res, np.empty(10), data = data)
+grads = approx_fprime_ind(res, np.empty(10), data = data)
 
 # Hessian matrix approximation
 def approx_hess_bhhh(grad_array):
@@ -107,19 +109,22 @@ def approx_hess_bhhh(grad_array):
     
     for i in range(nobs):
         
-        outer_pdt[i, :, :] = np.outer(grad_array[i, :], grad_array[i, :])
+        outer_pdt[i, :, :] = np.outer(grad_array[i], grad_array[i])
         
     return outer_pdt.sum(axis = 0) / nobs
 
-# function to calculate sum
-def aggregate_fun(fun, data, args = (), kwargs = {}):
+app_hess = approx_hess_bhhh(grads)
+
+def aggregate_fun(fun, x0, data, args = (), kwargs = {}):
     """
     Calculate the sum of the function given for every 
 
     Parameters
     ----------
-    fun : callable fun(x, *args)
+    fun : callable fun(x, data, *args, **kwargs)
         Objective function to aggregate over.
+    x0 : ndarray    
+        Parameters for which to calculate the function values.
     data : ndarray
         Array containing the data over which to aggregate.
     args : tuple, optional
@@ -138,98 +143,17 @@ def aggregate_fun(fun, data, args = (), kwargs = {}):
           
     for i in range(nobs):
         
-        fun_agg[i] = fun(data = data[i, :], *args, **kwargs)
+        fun_agg[i] = fun(x0, data = data[i], *args, **kwargs)
         
     return fun_agg.sum()
-
-def aggregate_fprime(grad_array):
-    """
-    Sum over the individual gradients of the function given to 
-    approx_fprime_ind.
-
-    Parameters
-    ----------
-    grad_array : ndarray
-        Output of the function approx_fprime_ind.
-
-    Returns
-    -------
-    grad_aggregate : ndarray
-        Sum of the individual gradient evaluations
-
-    """
-    
-    return grad_array.sum(axis = 0)
-    
-
-# Implement algorithm
-# End the algorithm if the norm of the gradient is smaller than a certain 
-# threshold i.e. 1e-05.
-# Order of the norm
-# Maximum iterations
-# Still need line search algorithm
-# Option to add fprime as a functional if known
-def fmin_bhhh(f, x0, args = (), gtol = 1e-05, norm = 2, maxiter = 10000):
-    """
-    
-
-    Parameters
-    ----------
-    f : callable f(x, *args)
-        Objective function to be minimized.
-    
-    x0 : ndarray
-        Initial guess.
-    
-    fprime : callable f'(x, *args), optional
-        Gradient of f.
-    
-    args : tuple, optional
-        Etra arguments passed to f and fprime. Default is ().
-    
-    gtol : float, optional
-        Gradient norm must be less than gtol before successful termination. 
-        Default value is 1e-05.
-    
-    norm : float, optional
-        Order of norm (Inf is max, - Inf is min).
-    
-    maxiter: float, optional
-        Maximum number of iterations to perform.
-
-    Returns
-    -------
-    xopt: ndarray
-        Parameters which minimize f, i.e. f(xopt) == fopt.
-        
-    fopt: float
-        Minimum value.
-
-    """
-    
-    # Setup empty numpy array
-    x_update = x0
-    
-    # Calculate 
-    for i in range(maxiter):
-        
-        # Calculate gradient and Hessian at previous guess
-        delta_g = grad(f, x_update[i].reshape, *args)
-        
-        # Check that gradient is below threshold
-        if np.linalg.norm(delta_g, norm) < gtol:
             
-            break
-        
-        gradobjfct = grad_obj_fct(delta_g)
-        Hessian = hess_approx(delta_g)
-        
-        # Update step
-        x_update.concatenate(x_update[i] - 
-                             np.linalg.inv(Hessian).dot(gradobjfct), 
-                             axis = 0)
-        
-    # Return fopt
-    return x_update[x_update.shape[0]]
-        
-        
+# Define normal density for regression
+x = np.random.normal(5, 2, 100)
+def neg_log_dnorm(theta, data):
+    
+    return - np.log(stats.norm.pdf(data, theta[0], theta[1]))
+
+def neg_log_dnorm_ols(theta, data):
+    
+    return - np.log(stats.norm.pdf((data[:, 0] - theta[1:].dot(data[:, 1:])) ** 2, 
+                    [0], theta[0]))
