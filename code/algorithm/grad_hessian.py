@@ -1,15 +1,16 @@
 # Test field minimization
 import numpy as np
 import scipy.stats as stats
+from numba import jit
 from scipy.optimize._numdiff import approx_derivative
 
 # Generate data
-X = np.random.randn(100, 10) * np.random.uniform(0.5, 4, (1, 10)) + \
+X = np.random.randn(10000, 10) * np.random.uniform(0.5, 4, (1, 10)) + \
     np.random.uniform(-20, 20, (1, 10))
 
 b_true = np.random.randn(10, 1)
 b_start = np.zeros((10, 1))
-Y = X.dot(b_true) + np.random.randn(100, 1)
+Y = X.dot(b_true) + np.random.randn(10000, 1)
 data = np.hstack((Y, X))
 
 # Mögliche Beispiele sind Logit, OLS, etc.
@@ -35,11 +36,11 @@ def res(b, data):
 
     """
     
-    return ((data[0] - data[1:].dot(b))** 2)
+    return ((data[0] - data[1:].dot(b)) ** 2)
 
 
 # Calculate the gradient of the loss
-def approx_fprime_ind(fun, x0, data, args = (), kwargs = {}):
+def approx_fprime_ind(fun, x0, data, nobs = None, args = (), kwargs = {}):
     """
     Calculate the gradient with respect to the coefficient vector b for every
     row in the data array.
@@ -54,6 +55,8 @@ def approx_fprime_ind(fun, x0, data, args = (), kwargs = {}):
         If fprime is approximated, use this value for the step size.
     data : ndarray
         Data on which to calculate the likelihood function.
+    nobs : int, optional
+        Argument that passes the number of rows in a dataset.
     args, kwargs : tuple and dict, optional
         Additional function inputs. args is empty by default while kwargs 
         contains the data array.
@@ -65,6 +68,9 @@ def approx_fprime_ind(fun, x0, data, args = (), kwargs = {}):
         
 
     """
+            
+    if nobs is None:
+        nobs = data.shape[0]
     
     # Calculate function values for each observation
     grad_array = np.empty((nobs, N))
@@ -86,6 +92,7 @@ def approx_fprime_ind(fun, x0, data, args = (), kwargs = {}):
 grads = approx_fprime_ind(res, np.empty(10), data = data)
 
 # Hessian matrix approximation
+@jit(nopython = True)
 def approx_hess_bhhh(grad_array):
     """
     Approximating the Hessian matrix by calculating the sum of the outer 
@@ -103,8 +110,8 @@ def approx_hess_bhhh(grad_array):
         Approximated Hessian matrix resulting from the outer product of the
         gradients.
 
-    """
-    
+    """        
+   
     outer_pdt = np.empty((nobs, N, N))
     
     for i in range(nobs):
@@ -115,9 +122,9 @@ def approx_hess_bhhh(grad_array):
 
 app_hess = approx_hess_bhhh(grads)
 
-def aggregate_fun(fun, x0, data, args = (), kwargs = {}):
+def aggregate_fun(fun, x0, data, nobs = None, args = (), kwargs = {}):
     """
-    Calculate the sum of the function given for every 
+    Calculate the sum of the function given for every data point.
 
     Parameters
     ----------
@@ -127,6 +134,8 @@ def aggregate_fun(fun, x0, data, args = (), kwargs = {}):
         Parameters for which to calculate the function values.
     data : ndarray
         Array containing the data over which to aggregate.
+    nobs : int, optional
+        Argument that passes the number of rows in a dataset.
     args : tuple, optional
         Extra arguments passed to fun. The default is ().
     kwargs : dict, optional
@@ -139,8 +148,11 @@ def aggregate_fun(fun, x0, data, args = (), kwargs = {}):
 
     """
     
+    if nobs is None:
+        nobs = data.shape[0]
+    
     fun_agg = np.empty(nobs)
-          
+    
     for i in range(nobs):
         
         fun_agg[i] = fun(x0, data = data[i], *args, **kwargs)
@@ -148,12 +160,18 @@ def aggregate_fun(fun, x0, data, args = (), kwargs = {}):
     return fun_agg.sum()
             
 # Define normal density for regression
-x = np.random.normal(5, 2, 100)
+x = np.random.normal(5, 2, 10000)
 def neg_log_dnorm(theta, data):
     
     return - np.log(stats.norm.pdf(data, theta[0], theta[1]))
 
 def neg_log_dnorm_ols(theta, data):
     
-    return - np.log(stats.norm.pdf((data[:, 0] - theta[1:].dot(data[:, 1:])) ** 2, 
-                    [0], theta[0]))
+    nobs = data.shape[0]
+    
+    return (- nobs / 2 * np.log(2 * np.pi * theta[0]) - 
+        0.5 * (data[:, 0] - data[:, 1:].dot(theta[1:]) ** 2 / theta[0]))
+
+# Example
+theta = np.array([1] + b_true.flatten().tolist())
+neg_log_dnorm_ols(theta, data)
