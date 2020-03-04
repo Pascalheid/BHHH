@@ -5,7 +5,7 @@ Created on Sun Feb 16 18:03:05 2020
 @author: Wilms
 """
 import numpy as np
-from grad_hessian import aggregate_fun, approx_fprime_ind, approx_hess_bhhh  
+from grad_hessian_vectorized import approx_fprime_ind, approx_hess_bhhh  
 from scipy.optimize.optimize import _check_unknown_options, _epsilon, \
     _line_search_wolfe12, _status_message, OptimizeResult, vecnorm 
 
@@ -13,7 +13,7 @@ from scipy.optimize.optimize import _check_unknown_options, _epsilon, \
 # Minimization function.
 def fmin_bhhh(fun, x0, data, bounds = None, fprime = None, args = (), 
               gtol = 1e-5, norm = np.Inf, epsilon = _epsilon, maxiter = None, 
-              full_output = 0, disp = 1, retall = 0, callback = None):
+              full_output = 0, disp = 1, retall = True, callback = None):
     """
     Minimize a function using the BHHH algorithm.
 
@@ -95,7 +95,6 @@ def fmin_bhhh(fun, x0, data, bounds = None, fprime = None, args = (),
     """
     opts = {'tol': tol,
             'norm': norm,
-            'eps': epsilon, # Noch einzubauen
             'disp': disp,
             'maxiter': maxiter,
             'return_all': retall}
@@ -117,7 +116,7 @@ def fmin_bhhh(fun, x0, data, bounds = None, fprime = None, args = (),
 
 
 def _minimize_bhhh(fun, x0, data, bounds = None, args = (), jac = None, 
-                   callback = None, tol = {"rel" : 1e-05, "abs" : 1e-05}, 
+                   callback = None, tol = {"rel" : 1e-05, "abs" : 1e-07}, 
                    norm = np.Inf, eps = _epsilon, maxiter = None, disp = False,
                    return_all = False, **unknown_options):
     """
@@ -131,8 +130,7 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), jac = None,
     maxiter : int
         Maximum number of iterations to perform.
     tol : dict
-        Gradient norm must be less than `gtol` before successful
-        termination.
+        Absolute and relative tolerance values.
     norm : float
         Order of norm (Inf is max, -Inf is min).
     eps : float or ndarray
@@ -154,21 +152,20 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), jac = None,
         x0.shape = (1,)
     
     if bounds is None:
-        if bounds.shape[1] != N:
-            raise ValueError('length of x0 != length of bounds')
-        
         bounds = np.array([np.inf] * N * 2).reshape((2, N))
         bounds[0, :] = - bounds[0, :]
-    elif:                  
-        low = bounds[0, :]
-        up = bounds[1, :]
-        x0 = np.clip(x0, low, up)
-        
+    if bounds.shape[1] != N:
+        raise ValueError('length of x0 != length of bounds')
+    
+    low = bounds[0, :]
+    up = bounds[1, :]
+    x0 = np.clip(x0, low, up)
+    
     if maxiter is None:
         maxiter = len(x0) * 200
     
     # Need the aggregate functions to take only x0 as an argument  
-    agg_fun = lambda x0 : aggregate_fun(f, x0, data, args, kwargs)
+    agg_fun = lambda x0 : f(x0, data, *args, **kwargs).sum()
 
     if not callable(fprime):
         myfprime = approx_fprime_ind
@@ -210,9 +207,9 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), jac = None,
         old_old_fval = old_fval + np.linalg.norm(gfk) / 2
         
         # Calculate BHHH hessian and step
-        Hk = approx_hess_bhhh(gfk_obs[inactiveset])  # Yes
+        Hk = approx_hess_bhhh(gfk_obs[:, inactiveset])  # Yes
         Bk = np.linalg.inv(Hk)
-        pk = np.empty((N, 1))
+        pk = np.empty(N)
         pk[inactiveset] = - np.dot(Bk, gfk[inactiveset])
         pk[activeset] = - gfk[activeset]
        
