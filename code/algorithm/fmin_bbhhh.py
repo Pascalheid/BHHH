@@ -213,17 +213,17 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), jac = None,
         pk[inactiveset] = - np.dot(Bk, gfk[inactiveset])
         pk[activeset] = - gfk[activeset]
        
-        try:
-            alpha_k, fc, gc, old_fval, old_old_fval, gfkp1 = \
-                     _line_search_wolfe12(agg_fun, 
-                                          agg_fprime, 
-                                          xk, pk, gfk,
-                                          old_fval, old_old_fval, 
-                                          amin = 1e-100, amax = 1e100)
-        except _LineSearchError:
-            # Line search failed to find a better solution.
-            warnflag = 2
-            break
+        # try:
+        #     alpha_k, fc, gc, old_fval, old_old_fval, gfkp1 = \
+        #              _line_search_wolfe12(agg_fun, 
+        #                                   agg_fprime, 
+        #                                   xk, pk, gfk,
+        #                                   old_fval, old_old_fval, 
+        #                                   amin = 1e-100, amax = 1e100)
+        # except _LineSearchError:
+        #     # Line search failed to find a better solution.
+        #     warnflag = 2
+        #     break
 
         xkp1 = np.clip(xk + alpha_k * pk, low, up)
         if retall:

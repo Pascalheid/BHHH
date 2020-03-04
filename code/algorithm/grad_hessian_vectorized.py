@@ -84,31 +84,32 @@ def neg_log_dnorm(theta, data):
     
     return - np.log(stats.norm.pdf(data, theta[0], theta[1]))
 
-def neg_log_dnorm_ols(theta, data):
+def neg_log_lk_ols(theta, data):
     
-    nobs = data.shape[0]
+    residual = (data[:, 0] - data[:, 1:].dot(theta[1:])) ** 2
+    return - np.log(stats.norm.pdf(residual, 0, theta[0]))
     
-    return (nobs / 2 * np.log(2 * np.pi * theta[0]) +
-        0.5 * (data[:, 0] - data[:, 1:].dot(theta[1:]) ** 2 / theta[0]))
-
 # Example
 # Generate data
-X = np.random.randn(10000, 10) * np.random.uniform(0.5, 4, (1, 10)) + \
-    np.random.uniform(-20, 20, (1, 10))
+X = np.random.randn(10000, 2) * np.random.uniform(0.5, 4, (1, 2)) + \
+    np.random.uniform(-20, 20, (1, 2))
 
-b_true = np.random.randn(10, 1)
+b_true = np.random.randn(2, 1)
 Y = X.dot(b_true) + np.random.randn(10000, 1)
 data = np.hstack((Y, X))
 
 theta_true = np.array([1] + b_true.flatten().tolist())
-theta_zero = np.ones(11)
-neg_log_dnorm_ols(theta, data)
+theta_zero = np.ones(3)
 
 def neg_log_binary_logistic(theta, data):
     
-    nobs = data.shape[0]
-    
-    
+    log_pr = np.log(1 / (1 + np.exp(- data[:, 1:].dot(theta))))
+    return data[:, 0] * log_pr + (1 - data[:, 0]) * log_pr
+   
 # Simulated dataset
-Y_cat = Y >= Y.mean()
+Z = X.dot(b_true) + np.random.normal(0, 3, (10000, 1))
+Pr = 1 / (1 + np.exp(- Z))
+y = np.random.binomial(1, Pr)
+data = np.hstack((y, X))
 
+sum_neg_log_bin_logistic = lambda(x0) : 
