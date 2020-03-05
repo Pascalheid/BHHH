@@ -7,12 +7,14 @@ Created on Sun Feb 16 18:03:05 2020
 import numpy as np
 from grad_hessian_vectorized import approx_fprime_ind, approx_hess_bhhh  
 from scipy.optimize.optimize import _check_unknown_options, _epsilon, \
-    _line_search_wolfe12, _status_message, OptimizeResult, vecnorm 
+    _line_search_wolfe12, _status_message, OptimizeResult, vecnorm, \
+    _LineSearchError 
 
 
 # Minimization function.
 def fmin_bhhh(fun, x0, data, bounds = None, fprime = None, args = (), 
-              gtol = 1e-5, norm = np.Inf, epsilon = _epsilon, maxiter = None, 
+              kwargs = {} , tol = {"abs" : 1e-05, "rel" : 1e-08}, 
+              norm = np.Inf, epsilon = _epsilon, maxiter = None, 
               full_output = 0, disp = 1, retall = True, callback = None):
     """
     Minimize a function using the BHHH algorithm.
@@ -99,7 +101,8 @@ def fmin_bhhh(fun, x0, data, bounds = None, fprime = None, args = (),
             'maxiter': maxiter,
             'return_all': retall}
 
-    res = _minimize_bhhh(fun, x0, data, args, fprime, callback = callback, 
+    res = _minimize_bhhh(fun, x0, data, bounds, args, kwargs, fprime, 
+                         callback = callback, 
                          **opts)
 
     if full_output:
@@ -115,10 +118,11 @@ def fmin_bhhh(fun, x0, data, bounds = None, fprime = None, args = (),
             return res['x']
 
 
-def _minimize_bhhh(fun, x0, data, bounds = None, args = (), jac = None, 
-                   callback = None, tol = {"rel" : 1e-05, "abs" : 1e-07}, 
-                   norm = np.Inf, eps = _epsilon, maxiter = None, disp = False,
-                   return_all = False, **unknown_options):
+def _minimize_bhhh(fun, x0, data, bounds = None, args = (), kwargs = {}, 
+                   jac = None, callback = None, 
+                   tol = {"abs" : 1e-05, "rel" : 1e-08}, norm = np.Inf, 
+                   maxiter = None, disp = False, return_all = False, 
+                   **unknown_options):
     """
     Minimization of scalar function of one or more variables using the
     BHHH algorithm.
@@ -169,6 +173,8 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), jac = None,
 
     if not callable(fprime):
         myfprime = approx_fprime_ind
+    else:
+        myfprime = fprime
 
     agg_fprime = lambda x0 : myfprime(f, x0, data, args, kwargs).sum(axis = 0)
 
@@ -213,17 +219,17 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), jac = None,
         pk[inactiveset] = - np.dot(Bk, gfk[inactiveset])
         pk[activeset] = - gfk[activeset]
        
-        # try:
-        #     alpha_k, fc, gc, old_fval, old_old_fval, gfkp1 = \
-        #              _line_search_wolfe12(agg_fun, 
-        #                                   agg_fprime, 
-        #                                   xk, pk, gfk,
-        #                                   old_fval, old_old_fval, 
-        #                                   amin = 1e-100, amax = 1e100)
-        # except _LineSearchError:
-        #     # Line search failed to find a better solution.
-        #     warnflag = 2
-        #     break
+        try:
+            alpha_k, fc, gc, old_fval, old_old_fval, gfkp1 = \
+                      _line_search_wolfe12(agg_fun, 
+                                          agg_fprime, 
+                                          xk, pk, gfk,
+                                          old_fval, old_old_fval, 
+                                          amin = 1e-100, amax = 1e100)
+        except _LineSearchError:
+            # Line search failed to find a better solution.
+            warnflag = 2
+            break
 
         xkp1 = np.clip(xk + alpha_k * pk, low, up)
         if retall:
@@ -246,7 +252,7 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), jac = None,
     elif k >= maxiter:
         warnflag = 1
         msg = _status_message['maxiter']
-    elif np.isnan(gnorm) or np.isnan(fval) or np.isnan(xk).any():
+    elif np.isnan(fval) or np.isnan(xk).any():
         warnflag = 3
         msg = _status_message['nan']
     else:
@@ -256,12 +262,8 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), jac = None,
         print("%s%s" % ("Warning: " if warnflag != 0 else "", msg))
         print("         Current function value: %f" % fval)
         print("         Iterations: %d" % k)
-        print("         Function evaluations: %d" % k)
-        print("         Gradient evaluations: %d" % k)
-
+        
     result = OptimizeResult(fun = fval, jac = gfk, hess_inv = Hk, 
-                            nfev = k,
-                            njev = k, 
                             status = warnflag,
                             success = (warnflag == 0), 
                             message = msg, x = xk, nit = k)

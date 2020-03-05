@@ -1,5 +1,6 @@
 # Test field minimization
 import numpy as np
+import scipy.optimize as opt
 import scipy.stats as stats
 from numba import jit
 from scipy.optimize._numdiff import approx_derivative
@@ -76,7 +77,7 @@ def approx_hess_bhhh(grad_array):
         
         outer_pdt[i, :, :] = np.outer(grad_array[i], grad_array[i])
         
-    return outer_pdt.sum(axis = 0) / nobs
+    return outer_pdt.sum(axis = 0)
             
 # Define normal density for regression
 x = np.random.normal(5, 2, 10000)
@@ -86,8 +87,9 @@ def neg_log_dnorm(theta, data):
 
 def neg_log_lk_ols(theta, data):
     
-    residual = (data[:, 0] - data[:, 1:].dot(theta[1:])) ** 2
-    return - np.log(stats.norm.pdf(residual, 0, theta[0]))
+    first_term = 0.5 * np.log(2 * np.pi * theta[0])
+    second_term = 0.5 * (data[:, 0] - data[:, 1:].dot(theta[1:])) ** 2 / theta[0]
+    return first_term + second_term
     
 # Example
 # Generate data
@@ -103,8 +105,8 @@ theta_zero = np.ones(3)
 
 def neg_log_binary_logistic(theta, data):
     
-    log_pr = np.log(1 / (1 + np.exp(- data[:, 1:].dot(theta))))
-    return data[:, 0] * log_pr + (1 - data[:, 0]) * log_pr
+    return - (data[:, 0] * data[:, 1:].dot(theta) - np.log(
+    1 + np.exp(data[:, 1:].dot(theta))))
    
 # Simulated dataset
 Z = X.dot(b_true) + np.random.normal(0, 3, (10000, 1))
@@ -112,4 +114,5 @@ Pr = 1 / (1 + np.exp(- Z))
 y = np.random.binomial(1, Pr)
 data = np.hstack((y, X))
 
-sum_neg_log_bin_logistic = lambda(x0) : 
+sum_neg_log_bin_logistic = lambda x0 : neg_log_binary_logistic(x0, data).sum()
+opt.fmin_bfgs(sum_neg_log_bin_logistic, np.ones(2))
