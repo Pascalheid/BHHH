@@ -109,7 +109,7 @@ def neg_log_binary_logistic(theta, data):
     1 + np.exp(data[:, 1:].dot(theta))))
    
 # Simulated dataset
-Z = X.dot(b_true) + np.random.normal(0, 3, (10000, 1))
+Z = X.dot(b_true)
 Pr = 1 / (1 + np.exp(- Z))
 y = np.random.binomial(1, Pr)
 data = np.hstack((y, X))

@@ -14,8 +14,8 @@ from scipy.optimize.optimize import _check_unknown_options, _epsilon, \
 # Minimization function.
 def fmin_bhhh(fun, x0, data, bounds = None, fprime = None, args = (), 
               kwargs = {} , tol = {"abs" : 1e-05, "rel" : 1e-08}, 
-              norm = np.Inf, epsilon = _epsilon, maxiter = None, 
-              full_output = 0, disp = 1, retall = True, callback = None):
+              norm = np.Inf, maxiter = None, full_output = 0, disp = 1, 
+              retall = True, callback = None):
     """
     Minimize a function using the BHHH algorithm.
 
@@ -42,8 +42,6 @@ def fmin_bhhh(fun, x0, data, bounds = None, fprime = None, args = (),
         absolute tolerance.
     norm : float, optional
         Order of norm (Inf is max, -Inf is min)
-    epsilon : int or ndarray, optional
-        If fprime is approximated, use this value for the step size.
     callback : callable, optional
         An optional user-supplied function to call after each
         iteration.  Called as callback(xk), where xk is the
@@ -79,20 +77,21 @@ def fmin_bhhh(fun, x0, data, bounds = None, fprime = None, args = (),
     allvecs  :  list
         The value of xopt at each iteration.  Only returned if retall is True.
 
-    See also
-    --------
-    minimize: Interface to minimization algorithms for multivariate
-        functions. See the 'BFGS' `method` in particular.
-
     Notes
     -----
     Optimize the function, f, whose gradient is given by fprime
     using the quasi-Newton method of Berndt, Hall, Hall,
-    and Hubert (BHHH)
+    and Hubert (BHHH). Box constraints are implemented by using a simple 
+    gradient approach at each step to identify active and inactive variables.
+    The standard BHHH approach is then used on the inactive subset.
 
     References
     ----------
-    REFERENCE NEEDED.
+    Berndt, E.; Hall, B.; Hall, R.; Hausman, J. (1974). "Estimation and 
+    Inference in Nonlinear Structural Models". Annals of Economic and Social 
+    Measurement. 3 (4): 653–665.
+    Buchwald, S. "Implementierung des L-BFGS-B-Verfahrens in Python". 
+    Bachelor-Thesis University of Konstanz.
 
     """
     opts = {'tol': tol,
@@ -105,17 +104,7 @@ def fmin_bhhh(fun, x0, data, bounds = None, fprime = None, args = (),
                          callback = callback, 
                          **opts)
 
-    if full_output:
-        retlist = (res['x'], res['fun'], res['jac'], res['hess_inv'],
-                   res['nfev'], res['njev'], res['status'])
-        if retall:
-            retlist += (res['allvecs'], )
-        return retlist
-    else:
-        if retall:
-            return res['x'], res['allvecs']
-        else:
-            return res['x']
+    return res
 
 
 def _minimize_bhhh(fun, x0, data, bounds = None, args = (), kwargs = {}, 
@@ -137,8 +126,6 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), kwargs = {},
         Absolute and relative tolerance values.
     norm : float
         Order of norm (Inf is max, -Inf is min).
-    eps : float or ndarray
-        If `jac` is approximated, use this value for the step size.
 
     """
     _check_unknown_options(unknown_options)
@@ -149,7 +136,6 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), kwargs = {},
     retall = return_all
     k = 0
     N = len(x0)
-    nobs = data.shape[0]
     
     x0 = np.asarray(x0).flatten()
     if x0.ndim == 0:
@@ -239,7 +225,7 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), kwargs = {},
             callback(xk)
         k += 1
 
-        if not np.isfinite(old_fval):
+        if np.isinf(old_fval):
             # We correctly found +-Inf as optimal value, or something went
             # wrong.
             warnflag = 2
