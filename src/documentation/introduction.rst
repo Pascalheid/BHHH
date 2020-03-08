@@ -27,7 +27,7 @@ The two algorithms differ in the way :math:`B_k` is calculated.
 The BHHH
 ===============
 
-TThe BHHH is only valid as long as the objective function f has the following form:
+The BHHH is only valid as long as the objective function f has the following form and if it is correctly specified:
 
 .. math::
 

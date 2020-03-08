@@ -122,34 +122,99 @@ Lastly, we check the performance of the L-BFGS-B by scipy:::
     'nit': 9,
     'warnflag': 0})
 
+Now we turn to have a look at how to implement bounds in our algorithms and how our algorithms perform in that scenario.
+We set our bounds in the following way:::
 
+    bounds = np.array([
+    [-5, -5], # Lower Bound
+    [5, 5]])  # Upper Bound
 
-This is a sample::
+Our two algorithms and the L-BFGS-B give the following outcomes:::
 
-    random.seed(123)
-    X = np.random.randn(10000, 2) * np.random.uniform(0.5, 4, (1, 2)) + np.random.uniform(-20, 20, (1, 2))
+    In[6]: fmin_bhhh(neg_log_binary_logistic, x0, data, bounds=bounds)
+    Optimization terminated successfully.
+         Current function value: 1456.998326
+         Iterations: 10
+    Out[6]:
+    allvecs: [array([1., 1.]), array([0.87654655, 0.37912622]), array([0.81307231, 0.31523565]), array([0.78731086, 0.29517646]), array([0.79044908, 0.29459225]), array([0.79034258, 0.29454117]), array([0.79036428, 0.29454492]), array([0.79036157, 0.29454435]), array([0.79036193, 0.29454442]), array([0.79036189, 0.29454441]), array([0.79036189, 0.29454441])]
+      fun: 1456.9983258198265
+    hess_inv: array([[ 1508.07398218, -2540.34711358],
+       [-2540.34711358, 24614.1895058 ]])
+      jac: array([-1.51184944e-06, -3.77412718e-06])
+    message: 'Optimization terminated successfully.'
+      nit: 10
+    status: 0
+    success: True
+        x: array([0.79036189, 0.29454441])
 
-    b_true = np.random.randn(2, 1)
-    Z = X.dot(b_true)
+    In[7]: fmin_l_bfgs_b(sum_neg_log_bin_logistic, x0, bounds=bounds)
+    Optimization terminated successfully.
+             Current function value: 1456.998326
+             Iterations: 20
+    Out[7]:
+     allvecs: [array([1., 1.]), array([1.09684122, 0.34619564]), array([1.08498527, 0.33167302]), array([0.83333005, 0.27279613]), array([0.82479022, 0.32141185]), array([0.82492236, 0.31403197]), array([0.82481991, 0.30905105]), array([0.82457451, 0.30567018]), array([0.82424252, 0.30334177]), array([0.82385313, 0.30169483]), array([0.82341565, 0.30049183]), array([0.82291411, 0.29956509]), array([0.82226688, 0.29876516]), array([0.82081561, 0.29766327]), array([0.79458805, 0.29322428]), array([0.79419733, 0.29493946]), array([0.79144468, 0.2943124 ]), array([0.79135294, 0.2946486 ]), array([0.79041434, 0.29454992]), array([0.79036183, 0.2945444 ]), array([0.79036189, 0.29454441])]
+         fun: 1456.9983258198265
+         jac: array([ 3.75485733e-08, -5.63228600e-08])
+     message: 'Optimization terminated successfully.'
+         nit: 20
+      status: 0
+     success: True
+           x: array([0.79036189, 0.29454441])
 
-    Pr = 1 / (1 + np.exp(-Z))
-    y = np.random.binomial(1, Pr)
-    data = np.hstack((y, X))
+     In[8]: opt.fmin_l_bfgs_b(
+         sum_neg_log_bin_logistic, x0, approx_grad=1, bounds=[(-5, 5), (-5, 5)]
+     )
+     Out[8]:
+     (array([0.79036008, 0.29454495]),
+      1456.9983258281968,
+      {'grad': array([-0.00404725,  0.01750777]),
+       'task': b'CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH',
+       'funcalls': 51,
+       'nit': 11,
+       'warnflag': 0})
 
-    def neg_log_binary_logistic(theta, data):
+Now we repeat this again with binding bounds which we choose in the following way:::
 
-    return -(data[:, 0] * data[:, 1:].dot(theta) - np.log(1 + np.exp(data[:, 1:].dot(theta))))
+    bounds = np.array([[1, 0], [5, 5]])
 
-That is enough.
+Again we compare the performance of the three optimizers.::
 
-Some Output::
+    In[9]: fmin_bhhh(neg_log_binary_logistic, x0, data, bounds=bounds)
+    Warning: Desired error not necessarily achieved due to precision loss.
+         Current function value: 1457.518572
+         Iterations: 4
+    Out[9]:
+    allvecs: [array([1., 1.]), array([1.        , 0.37912622]), array([1.        , 0.31730476]), array([1.        , 0.29798233]), array([1.        , 0.29571081])]
+      fun: 1457.5185722940178
+    hess_inv: array([[ 1609.038326  , -2786.49633572],
+       [-2786.49633572, 25330.01697339]])
+      jac: array([ 292.67819627, -503.71015451])
+    message: 'Desired error not necessarily achieved due to precision loss.'
+      nit: 4
+    status: 2
+    success: False
+        x: array([1.        , 0.29571081])
 
-    In [5]: y
-    Out[5]:
-    array([[0],
-           [0],
-           [0],
-           ...,
-           [0],
-           [0],
-           [0]])
+    In[10]: fmin_l_bfgs_b(sum_neg_log_bin_logistic, x0, bounds=bounds)
+    Warning: Desired error not necessarily achieved due to precision loss.
+             Current function value: 1466.678892
+             Iterations: 3
+    Out[10]:
+     allvecs: [array([1., 1.]), array([1.09684122, 0.34619564]), array([1.08498527, 0.33167302]), array([1.        , 0.27279613])]
+         fun: 1466.6788923313547
+         jac: array([  355.74543618, -1100.59348999])
+     message: 'Desired error not necessarily achieved due to precision loss.'
+         nit: 3
+      status: 2
+     success: False
+           x: array([1.        , 0.27279613])
+
+    In[12]: opt.fmin_l_bfgs_b(sum_neg_log_bin_logistic, x0, approx_grad=1, bounds=[(1, 5), (0, 5)])
+    Out[12]:
+    (array([1.        , 0.31735022]),
+    1483.20994021217,
+    {'grad': array([233.0335974,   0.       ]),
+     'task': b'CONVERGENCE: NORM_OF_PROJECTED_GRADIENT_<=_PGTOL',
+     'funcalls': 24,
+     'nit': 6,
+     'warnflag': 0})
