@@ -11,12 +11,7 @@ Welcome to the BHHH implementation for estimagic project's documentation!
     :maxdepth: 2
 
     introduction
-    original_data
-    data_management
-    analysis
-    final
-    paper
-    model_code
-    model_specs
-    library
+    BHHH
+    L-BFGS-B
+    example
     references

@@ -1,21 +1,32 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Feb 16 18:03:05 2020
-
-@author: Wilms
-"""
+# flake8: noqa
 import numpy as np
-from grad_hessian_vectorized import approx_fprime_ind, approx_hess_bhhh  
-from scipy.optimize.optimize import _check_unknown_options, _epsilon, \
-    _line_search_wolfe12, _status_message, OptimizeResult, vecnorm, \
-    _LineSearchError 
+from grad_hessian_vectorized import approx_fprime_ind
+from grad_hessian_vectorized import approx_hess_bhhh
+from scipy.optimize.optimize import _check_unknown_options
+from scipy.optimize.optimize import _line_search_wolfe12
+from scipy.optimize.optimize import _LineSearchError
+from scipy.optimize.optimize import _status_message
+from scipy.optimize.optimize import OptimizeResult
+from scipy.optimize.optimize import vecnorm
 
 
 # Minimization function.
-def fmin_bhhh(fun, x0, data, bounds = None, fprime = None, args = (), 
-              kwargs = {} , tol = {"abs" : 1e-05, "rel" : 1e-08}, 
-              norm = np.Inf, maxiter = None, full_output = 0, disp = 1, 
-              retall = True, callback = None):
+def fmin_bhhh(
+    fun,
+    x0,
+    data,
+    bounds=None,
+    fprime=None,
+    args=(),
+    kwargs={},
+    tol={"abs": 1e-05, "rel": 1e-08},
+    norm=np.Inf,
+    maxiter=None,
+    full_output=0,
+    disp=1,
+    retall=True,
+    callback=None,
+):
     """
     Minimize a function using the BHHH algorithm.
 
@@ -36,8 +47,8 @@ def fmin_bhhh(fun, x0, data, bounds = None, fprime = None, args = (),
     args : tuple, optional
         Extra arguments passed to f and fprime.
     tol : dict, optional
-        Dict that contains the absolute and relative tolerance parameters. 
-        Form should be tol = {"abs" : x, "rel" : y}. Both parameters must be 
+        Dict that contains the absolute and relative tolerance parameters.
+        Form should be tol = {"abs" : x, "rel" : y}. Both parameters must be
         strictly positive and relative tolerance must be bigger equal to the
         absolute tolerance.
     norm : float, optional
@@ -81,37 +92,50 @@ def fmin_bhhh(fun, x0, data, bounds = None, fprime = None, args = (),
     -----
     Optimize the function, f, whose gradient is given by fprime
     using the quasi-Newton method of Berndt, Hall, Hall,
-    and Hubert (BHHH). Box constraints are implemented by using a simple 
+    and Hubert (BHHH). Box constraints are implemented by using a simple
     gradient approach at each step to identify active and inactive variables.
     The standard BHHH approach is then used on the inactive subset.
 
     References
     ----------
-    Berndt, E.; Hall, B.; Hall, R.; Hausman, J. (1974). "Estimation and 
-    Inference in Nonlinear Structural Models". Annals of Economic and Social 
+    Berndt, E.; Hall, B.; Hall, R.; Hausman, J. (1974). "Estimation and
+    Inference in Nonlinear Structural Models". Annals of Economic and Social
     Measurement. 3 (4): 653–665.
-    Buchwald, S. "Implementierung des L-BFGS-B-Verfahrens in Python". 
+    Buchwald, S. "Implementierung des L-BFGS-B-Verfahrens in Python".
     Bachelor-Thesis University of Konstanz.
 
     """
-    opts = {'tol': tol,
-            'norm': norm,
-            'disp': disp,
-            'maxiter': maxiter,
-            'return_all': retall}
+    opts = {
+        "tol": tol,
+        "norm": norm,
+        "disp": disp,
+        "maxiter": maxiter,
+        "return_all": retall,
+    }
 
-    res = _minimize_bhhh(fun, x0, data, bounds, args, kwargs, fprime, 
-                         callback = callback, 
-                         **opts)
+    res = _minimize_bhhh(
+        fun, x0, data, bounds, args, kwargs, fprime, callback=callback, **opts
+    )
 
     return res
 
 
-def _minimize_bhhh(fun, x0, data, bounds = None, args = (), kwargs = {}, 
-                   jac = None, callback = None, 
-                   tol = {"abs" : 1e-05, "rel" : 1e-08}, norm = np.Inf, 
-                   maxiter = None, disp = False, return_all = False, 
-                   **unknown_options):
+def _minimize_bhhh(
+    fun,
+    x0,
+    data,
+    bounds=None,
+    args=(),
+    kwargs={},
+    jac=None,
+    callback=None,
+    tol={"abs": 1e-05, "rel": 1e-08},
+    norm=np.Inf,
+    maxiter=None,
+    disp=False,
+    return_all=False,
+    **unknown_options
+):
     """
     Minimization of scalar function of one or more variables using the
     BHHH algorithm.
@@ -129,89 +153,90 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), kwargs = {},
 
     """
     _check_unknown_options(unknown_options)
-    
+
     f = fun
     fprime = jac
     # epsilon = eps Add functionality
     retall = return_all
     k = 0
     N = len(x0)
-    
+
     x0 = np.asarray(x0).flatten()
     if x0.ndim == 0:
         x0.shape = (1,)
-    
+
     if bounds is None:
         bounds = np.array([np.inf] * N * 2).reshape((2, N))
-        bounds[0, :] = - bounds[0, :]
+        bounds[0, :] = -bounds[0, :]
     if bounds.shape[1] != N:
-        raise ValueError('length of x0 != length of bounds')
-    
+        raise ValueError("length of x0 != length of bounds")
+
     low = bounds[0, :]
     up = bounds[1, :]
     x0 = np.clip(x0, low, up)
-    
+
     if maxiter is None:
         maxiter = len(x0) * 200
-    
-    # Need the aggregate functions to take only x0 as an argument  
-    agg_fun = lambda x0 : f(x0, data, *args, **kwargs).sum()
+
+    # Need the aggregate functions to take only x0 as an argument
+    def agg_fun(x0):
+        return f(x0, data, *args, **kwargs).sum()
 
     if not callable(fprime):
         myfprime = approx_fprime_ind
     else:
         myfprime = fprime
 
-    agg_fprime = lambda x0 : myfprime(f, x0, data, args, kwargs).sum(axis = 0)
+    def agg_fprime(x0):
+        return myfprime(f, x0, data, args, kwargs).sum(axis=0)
 
     # Setup for iteration
     old_fval = agg_fun(x0)
-    
+
     gf0 = agg_fprime(x0)
-    norm_pg0 = vecnorm(x0 - np.clip(x0 - gf0, low, up), ord = norm)
-    
+    norm_pg0 = vecnorm(x0 - np.clip(x0 - gf0, low, up), ord=norm)
+
     xk = x0
     norm_pgk = norm_pg0
-    
+
     if retall:
         allvecs = [x0]
     warnflag = 0
 
-    for i in range(maxiter): # for loop instead.
-        
-        # Calculate indices ofactive and inative set using projected gradient
-        epsilon = min(np.min(up - low) / 2, norm_pgk)
-        activeset = np.logical_or(x0 - low <= epsilon, up - x0 <= epsilon)
-        inactiveset = np.logical_not(activeset)
-        
+    for _ in range(maxiter):  # for loop instead.
+
         # Individual
         gfk_obs = myfprime(f, xk, data, args, kwargs)
-        
+
         # Aggregate fprime. Might replace by simply summing up gfk_obs
-        gfk = gfk_obs.sum(axis = 0)
-        norm_pgk = vecnorm(xk - np.clip(xk - gfk, low, up), ord = norm)
-        
+        gfk = gfk_obs.sum(axis=0)
+        norm_pgk = vecnorm(xk - np.clip(xk - gfk, low, up), ord=norm)
+
         # Check tolerance of gradient norm
-        if(norm_pgk <= tol["abs"] + tol["rel"] * norm_pg0):
+        if norm_pgk <= tol["abs"] + tol["rel"] * norm_pg0:
             break
 
         # Sets the initial step guess to dx ~ 1
         old_old_fval = old_fval + np.linalg.norm(gfk) / 2
-        
+
         # Calculate BHHH hessian and step
-        Hk = approx_hess_bhhh(gfk_obs[:, inactiveset])  # Yes
+        Hk = approx_hess_bhhh(gfk_obs)  # Yes
         Bk = np.linalg.inv(Hk)
         pk = np.empty(N)
-        pk[inactiveset] = - np.dot(Bk, gfk[inactiveset])
-        pk[activeset] = - gfk[activeset]
-       
+        pk = -np.dot(Bk, gfk)
+
         try:
-            alpha_k, fc, gc, old_fval, old_old_fval, gfkp1 = \
-                      _line_search_wolfe12(agg_fun, 
-                                          agg_fprime, 
-                                          xk, pk, gfk,
-                                          old_fval, old_old_fval, 
-                                          amin = 1e-100, amax = 1e100)
+            alpha_k, fc, gc, old_fval, old_old_fval, gfkp1 = _line_search_wolfe12(
+                agg_fun,
+                agg_fprime,
+                xk,
+                pk,
+                gfk,
+                old_fval,
+                old_old_fval,
+                amin=1e-100,
+                amax=1e100,
+            )
         except _LineSearchError:
             # Line search failed to find a better solution.
             warnflag = 2
@@ -234,25 +259,31 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), kwargs = {},
     fval = old_fval
 
     if warnflag == 2:
-        msg = _status_message['pr_loss']
+        msg = _status_message["pr_loss"]
     elif k >= maxiter:
         warnflag = 1
-        msg = _status_message['maxiter']
+        msg = _status_message["maxiter"]
     elif np.isnan(fval) or np.isnan(xk).any():
         warnflag = 3
-        msg = _status_message['nan']
+        msg = _status_message["nan"]
     else:
-        msg = _status_message['success']
+        msg = _status_message["success"]
 
     if disp:
-        print("%s%s" % ("Warning: " if warnflag != 0 else "", msg))
+        print("{}{}".format("Warning: " if warnflag != 0 else "", msg))
         print("         Current function value: %f" % fval)
         print("         Iterations: %d" % k)
-        
-    result = OptimizeResult(fun = fval, jac = gfk, hess_inv = Hk, 
-                            status = warnflag,
-                            success = (warnflag == 0), 
-                            message = msg, x = xk, nit = k)
+
+    result = OptimizeResult(
+        fun=fval,
+        jac=gfk,
+        hess_inv=Hk,
+        status=warnflag,
+        success=(warnflag == 0),
+        message=msg,
+        x=xk,
+        nit=k,
+    )
     if retall:
-        result['allvecs'] = allvecs
+        result["allvecs"] = allvecs
     return result

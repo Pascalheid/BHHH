@@ -1,13 +1,14 @@
-# Test field minimization
+# flake8: noqa
 import numpy as np
-import scipy.optimize as opt
-import scipy.stats as stats
 from numba import jit
 from scipy.optimize._numdiff import approx_derivative
 
 # Mögliche Beispiele sind Logit, OLS, etc.
 # Calculate the gradient of the loss
-def approx_fprime_ind(fun, x0, data, args = (), kwargs = {}):
+
+
+def approx_fprime_ind(fun, x0, data, args=(), kwargs={}):
+
     """
     Calculate the gradient with respect to the coefficient vector b for every
     row in the data array.
@@ -25,39 +26,39 @@ def approx_fprime_ind(fun, x0, data, args = (), kwargs = {}):
     nobs : int, optional
         Argument that passes the number of rows in a dataset.
     args, kwargs : tuple and dict, optional
-        Additional function inputs. args is empty by default while kwargs 
+        Additional function inputs. args is empty by default while kwargs
         contains the data array.
-    
+
     Returns
     -------
     grad_array : array
         The partial derivatives of f w.r.t. x0 for every observation.
-        
+
 
     """
     kwargs_temp = kwargs.copy()
-    
+
     try:
-        kwargs_temp.update({"data" : data})
-        grad_array = approx_derivative(fun, x0, kwargs = kwargs_temp)
+        kwargs_temp.update({"data": data})
+        grad_array = approx_derivative(fun, x0, kwargs=kwargs_temp)
         return grad_array
     except IndexError:
-        print("Function {} couldn't be vectorized.".format(fun))        
-                                                        
+        print(f"Function {fun} couldn't be vectorized.")
+
     return grad_array
 
 
 # Hessian matrix approximation
-@jit(nopython = True)
+@jit(nopython=True)
 def approx_hess_bhhh(grad_array):
     """
-    Approximating the Hessian matrix by calculating the sum of the outer 
+    Approximating the Hessian matrix by calculating the sum of the outer
     products of the gradients evaluated at each individual observation.
 
     Parameters
     ----------
     grad_array : ndarray
-        An array containing the gradient of the objective function for every 
+        An array containing the gradient of the objective function for every
         individual.
 
     Returns
@@ -66,22 +67,23 @@ def approx_hess_bhhh(grad_array):
         Approximated Hessian matrix resulting from the outer product of the
         gradients.
 
-    """        
-   
-    nobs = data.shape[0]
+    """
+
+    nobs = grad_array.shape[0]
     N = grad_array.shape[1]
-    
+
     outer_pdt = np.empty((nobs, N, N))
-    
+
     for i in range(nobs):
-        
+
         outer_pdt[i, :, :] = np.outer(grad_array[i], grad_array[i])
-        
-    return outer_pdt.sum(axis = 0)
+
+    return outer_pdt.sum(axis=0)
+
 
 def bfgsrecb(nt, sstore, ystore, pk, activeset):
     """
-    Recursively compute action of an approximated Hessian on a vector using 
+    Recursively compute action of an approximated Hessian on a vector using
     stored information of the history of the iteration
 
     Parameters
@@ -101,59 +103,21 @@ def bfgsrecb(nt, sstore, ystore, pk, activeset):
         Returns the step size.
 
     """
-    
+
     pk[activeset] = 0
     if nt == 0:
         return pk
-    
+
     sstore[nt - 1, :][activeset] = 0
     ystore[nt - 1, :][activeset] = 0
-    
+
     Alpha = sstore[nt - 1, :].dot(pk)
     pk = pk - Alpha * ystore[nt - 1, :]
-    
+
     newset = np.int_([])
     pk = bfgsrecb(nt - 1, sstore, ystore, pk, newset)
-    
+
     pk = pk + (Alpha - ystore[nt - 1, :].dot(pk)) * sstore[nt - 1, :]
     pk[activeset] = 0
-    
+
     return pk
-            
-# Define normal density for regression
-x = np.random.normal(5, 2, 10000)
-def neg_log_dnorm(theta, data):
-    
-    return - np.log(stats.norm.pdf(data, theta[0], theta[1]))
-
-def neg_log_lk_ols(theta, data):
-    
-    first_term = 0.5 * np.log(2 * np.pi * theta[0])
-    second_term = 0.5 * (data[:, 0] - data[:, 1:].dot(theta[1:])) ** 2 / theta[0]
-    return first_term + second_term
-    
-# Example
-# Generate data
-X = np.random.randn(10000, 2) * np.random.uniform(0.5, 4, (1, 2)) + \
-    np.random.uniform(-20, 20, (1, 2))
-
-b_true = np.random.randn(2, 1)
-Y = X.dot(b_true) + np.random.randn(10000, 1)
-data = np.hstack((Y, X))
-
-theta_true = np.array([1] + b_true.flatten().tolist())
-theta_zero = np.ones(3)
-
-def neg_log_binary_logistic(theta, data):
-    
-    return - (data[:, 0] * data[:, 1:].dot(theta) - np.log(
-    1 + np.exp(data[:, 1:].dot(theta))))
-   
-# Simulated dataset
-Z = X.dot(b_true)
-Pr = 1 / (1 + np.exp(- Z))
-y = np.random.binomial(1, Pr)
-data = np.hstack((y, X))
-
-sum_neg_log_bin_logistic = lambda x0 : neg_log_binary_logistic(x0, data).sum()
-opt.fmin_bfgs(sum_neg_log_bin_logistic, np.ones(2))

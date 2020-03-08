@@ -5,68 +5,61 @@
 Introduction
 ************
 
-You can find the documentation on the rationale, Waf, and more background at https://econ-project-templates.readthedocs.io/en/stable/
+The purpose of this package is to implement the algorithm by Berndt-Hall-Hall-Hausman (BHHH) in Python
+in order to numerically find the minimum of a function. On top of that, we further implement the Bounded Limited-Memory
+Broyden–Fletcher–Goldfarb–Shanno alogorithm (L-BFGS-B).
+This documentation starts off with a short description of those two algorithms.
+In the next chapters we further report the docstrings of the functions used with some notes and conclude with some information on the practical
+usage of our algorithms plus an example.
 
-The Python version of the template uses a modified version of Stachurski's and Sargent's code accompanying their Online Course :cite:`StachurskiSargent13` for Schelling's (1969, :cite:`Schelling69`) segregation model as the running exmaple.
+Both algorithms are part of the family of Quasi Newton-Rhapson methods. Those generally proceed in the following way.
 
+    1. First the search direction :math:`p_k = -B_k^{-1} \nabla f(x_k)` needs to be found while :math:`p_k` is the direction, :math:`B_k` is the Hessian and :math:`\nabla f(x_k)` is the gradient of the objective function.
 
-.. _getting_started:
+    2. Then :math:`\alpha_k` needs to be found by line search.
 
-Getting started
+    3. And lastly :math:`x_k` is updated through :math:`x_{k+1} = x_k + \alpha_k p_k`
+
+The two algorithms differ in the way :math:`B_k` is calculated.
+
+.. _BHHH:
+
+The BHHH
 ===============
 
-**This assumes you have completed the steps in the `Getting Started section of the documentation <https://econ-project-templates.readthedocs.io/en/stable/getting_started.html>`_ and **everything worked.**
+TThe BHHH is only valid as long as the objective function f has the following form:
 
-The logic of the project template works by step of the analysis:
+.. math::
 
-1. Data management
-2. The actual estimations / simulations / ?
-3. Visualisation and results formatting (e.g. exporting of LaTeX tables)
-4. Research paper and presentations.
+    f = \sum_{i=1}^{N} f_i(\beta_k)
 
-It can be useful to have code and model parameters available to more than one of these steps, in that case see sections :ref:`model_specifications`, :ref:`model_code`, and :ref:`library`.
+It is therefore most often used to minimize negative log likelihood functions. This algorithm differs from other
+Quasi Newton-Rhapson algorithms (such as the L-BFGS) in calculating the Hessian Matrix and hence in updating the
+step size. For the BHHH case the Hessian matrix is calculated in the following way:
 
-First of all, think about whether this structure fits your needs -- if it does not, you need to adjust (delete/add/rename) directories and files in the following locations:
+.. math::
 
-    * Directories in **src/**;
-    * The list of included wscript files in **src/wscript**;
-    * The documentation source files in **src/documentation/** (Note: These should follow the directories in **src** exactly);
-    * The list of included documentation source files in **src/documentation/index.rst**
+    B_k = \sum_{i=1}^{N} \frac{\delta f_i(\beta_k)}{\delta \beta} \frac{\delta f_i(\beta_k)}{\delta \beta}^\prime
 
-Later adjustments should be painlessly possible, so things won't be set in stone.
+This is the outer product of the gradient of the individual funtions.
+This calculation is performed in the function *approx_hess_bhhh*.
+The actual algorithm for which the calculation of the Hessian is needed is done in the function *_minimize_bhhh*.
+This function is wrapped by the function *fmin_bhhh*.
 
-Once you have done that, move your source data to **src/original_data/** and start filling up the actual steps of the project workflow (data management, analysis, final steps, paper). All you should need to worry about is to call the correct task generators in the wscript files. Always specify the actions in the wscript that lives in the same directory as your main source file. Make sure you understand how the paths work in Waf and how to use the auto-generated files in the language you are using particular language (see the section :ref:`project_paths` below).
+.. _L_BFGS:
 
+The L-BFGS-B
+===============
 
-.. _project_paths:
+As previously mentioned we also implement the bounded, limited-memory BFGS algorithm. The general structure is fairly
+similar although here the Hessian matrix is calculated differently and in comparison to BFGS in
+a memory saving fashion (which is done in the function *bfgsrecb*).
+The main algorithm can be found in the function *_minimize_lbfgsb* and it is wrapped by *fmin_l_bfgs_b*.
 
-Project paths
-=============
+Note
+===============
 
-A variety of project paths are defined in the top-level wscript file. These are exported to header files in other languages. So in case you require different paths (e.g. if you have many different datasets, you may want to have one path to each of them), adjust them in the top-level wscript file.
-
-The following is taken from the top-level wscript file. Modify any project-wide path settings there.
-
-.. literalinclude:: ../../wscript
-    :start-after: out = "bld"
-    :end-before:     # Convert the directories into Waf nodes
-
-
-As should be evident from the similarity of the names, the paths follow the steps of the analysis in the :file:`src` directory:
-
-    1. **data_management** → **OUT_DATA**
-    2. **analysis** → **OUT_ANALYSIS**
-    3. **final** → **OUT_FINAL**, **OUT_FIGURES**, **OUT_TABLES**
-
-These will re-appear in automatically generated header files by calling the ``write_project_paths`` task generator (just use an output file with the correct extension for the language you need -- ``.py``, ``.r``, ``.m``, ``.do``)
-
-By default, these header files are generated in the top-level build directory, i.e. ``bld``. The Python version defines a dictionary ``project_paths`` and a couple of convencience functions documented below. You can access these by adding a line::
-
-    from bld.project_paths import XXX
-
-at the top of you Python-scripts. Here is the documentation of the module:
-
-    **bld.project_paths**
-
-    .. automodule:: bld.project_paths
-        :members:
+Both of our algorithms allow to include inequality constraints (bounds) which restricts the possible values among
+the algorithms can look for a minimum.
+Above that we for the line search we make us of the function *_line_search_wolfe12* which we take from scipy.
+This line search algorithm satisifies the strong Wolfe conditions.
