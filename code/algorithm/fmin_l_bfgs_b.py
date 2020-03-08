@@ -5,14 +5,15 @@ Created on Sun Feb 16 18:03:05 2020
 @author: Wilms
 """
 import numpy as np
-from grad_hessian_vectorized import approx_fprime_ind, approx_hess_bhhh  
+from grad_hessian_vectorized import bfgsrecb
+from scipy.optimize._numdiff import approx_derivative
 from scipy.optimize.optimize import _check_unknown_options, _epsilon, \
     _line_search_wolfe12, _status_message, OptimizeResult, vecnorm, \
     _LineSearchError 
 
 
 # Minimization function.
-def fmin_bhhh(fun, x0, data, bounds = None, fprime = None, args = (), 
+def fmin_l_bfgs_b(fun, x0, bounds = None, fprime = None, args = (), 
               kwargs = {} , tol = {"abs" : 1e-05, "rel" : 1e-08}, 
               norm = np.Inf, maxiter = None, full_output = 0, disp = 1, 
               retall = True, callback = None):
@@ -100,14 +101,14 @@ def fmin_bhhh(fun, x0, data, bounds = None, fprime = None, args = (),
             'maxiter': maxiter,
             'return_all': retall}
 
-    res = _minimize_bhhh(fun, x0, data, bounds, args, kwargs, fprime, 
+    res = _minimize_lbfgsb(fun, x0, bounds, args, kwargs, fprime, 
                          callback = callback, 
                          **opts)
 
     return res
 
 
-def _minimize_bhhh(fun, x0, data, bounds = None, args = (), kwargs = {}, 
+def _minimize_lbfgsb(fun, x0, bounds = None, args = (), kwargs = {}, 
                    jac = None, callback = None, 
                    tol = {"abs" : 1e-05, "rel" : 1e-08}, norm = np.Inf, 
                    maxiter = None, disp = False, return_all = False, 
@@ -130,11 +131,13 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), kwargs = {},
     """
     _check_unknown_options(unknown_options)
     
-    f = fun
+    f = lambda x0 : fun(x0, *args, **kwargs)
     fprime = jac
     # epsilon = eps Add functionality
     retall = return_all
     k = 0
+    ns = 0
+    nsmax = 5
     N = len(x0)
     
     x0 = np.asarray(x0).flatten()
@@ -154,61 +157,52 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), kwargs = {},
     if maxiter is None:
         maxiter = len(x0) * 200
     
-    # Need the aggregate functions to take only x0 as an argument  
-    agg_fun = lambda x0 : f(x0, data, *args, **kwargs).sum()
-
     if not callable(fprime):
-        myfprime = approx_fprime_ind
+        myfprime = lambda x0 : approx_derivative(f, x0, args = args, 
+                                                 kwargs = kwargs)
     else:
         myfprime = fprime
 
-    agg_fprime = lambda x0 : myfprime(f, x0, data, args, kwargs).sum(axis = 0)
-
     # Setup for iteration
-    old_fval = agg_fun(x0)
+    old_fval = f(x0)
     
-    gf0 = agg_fprime(x0)
+    gf0 = myfprime(x0)
+    gfk = gf0
     norm_pg0 = vecnorm(x0 - np.clip(x0 - gf0, low, up), ord = norm)
     
     xk = x0
     norm_pgk = norm_pg0
     
+    sstore = np.zeros((maxiter, N))
+    ystore = sstore.copy()
+    
     if retall:
         allvecs = [x0]
     warnflag = 0
 
+    # Calculate indices ofactive and inative set using projected gradient
+    epsilon = min(np.min(up - low) / 2, norm_pgk)
+    activeset = np.logical_or(xk - low <= epsilon, up - xk <= epsilon)
+    inactiveset = np.logical_not(activeset)
+        
     for i in range(maxiter): # for loop instead.
-        
-        # Calculate indices ofactive and inative set using projected gradient
-        epsilon = min(np.min(up - low) / 2, norm_pgk)
-        activeset = np.logical_or(xk - low <= epsilon, up - xk <= epsilon)
-        inactiveset = np.logical_not(activeset)
-        
-        # Individual
-        gfk_obs = myfprime(f, xk, data, args, kwargs)
-        
-        # Aggregate fprime. Might replace by simply summing up gfk_obs
-        gfk = gfk_obs.sum(axis = 0)
-        norm_pgk = vecnorm(xk - np.clip(xk - gfk, low, up), ord = norm)
         
         # Check tolerance of gradient norm
         if(norm_pgk <= tol["abs"] + tol["rel"] * norm_pg0):
             break
 
+        pk = - gfk
+        pk = bfgsrecb(ns, sstore, ystore, pk, activeset)
+        gfk_active = gfk.copy()
+        gfk_active[inactiveset] = 0
+        pk = - gfk_active + pk        
+        
         # Sets the initial step guess to dx ~ 1
         old_old_fval = old_fval + np.linalg.norm(gfk) / 2
-        
-        # Calculate BHHH hessian and step
-        Hk = approx_hess_bhhh(gfk_obs[:, inactiveset])  # Yes
-        Bk = np.linalg.inv(Hk)
-        pk = np.empty(N)
-        pk[inactiveset] = - np.dot(Bk, gfk[inactiveset])
-        pk[activeset] = - gfk[activeset]
-               
+          
         try:
             alpha_k, fc, gc, old_fval, old_old_fval, gfkp1 = \
-                      _line_search_wolfe12(agg_fun, 
-                                          agg_fprime, 
+                      _line_search_wolfe12(f, myfprime, 
                                           xk, 
                                           pk, 
                                           gfk,
@@ -220,17 +214,50 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), kwargs = {},
             break
         
         xkp1 = np.clip(xk + alpha_k * pk, low, up)
+
         if retall:
             allvecs.append(xkp1)
+
+        yk = myfprime(xkp1) - gfk
+        sk = xkp1 - xk
         xk = xkp1
+        gfk = myfprime(xkp1)
+        
+        norm_pgk = vecnorm(xk - np.clip(xk - gfk, low, up), ord = norm)  
+
+        # Calculate indices ofactive and inative set using projected gradient
+        epsilon = min(np.min(up - low) / 2, norm_pgk)
+        activeset = np.logical_or(xk - low <= epsilon, up - xk <= epsilon)
+        inactiveset = np.logical_not(activeset)
+
+        yk[activeset] = 0
+        sk[activeset] = 0
+        
+        # reset storage
+        ytsk = yk.dot(sk)
+        if ytsk <= 0:
+            ns = 0
+        if ns == nsmax:
+            print("ns reached maximum size")
+            ns = 0
+        elif ytsk > 0:
+            ns += 1
+            alpha0 = ytsk ** 0.5
+            sstore[ns - 1, :] = sk / alpha0
+            ystore[ns - 1, :] = yk / alpha0
+
+        k += 1
+
         if callback is not None:
             callback(xk)
-        k += 1
 
         if np.isinf(old_fval):
             # We correctly found +-Inf as optimal value, or something went
             # wrong.
             warnflag = 2
+            break
+        if np.isnan(xk).any():
+            warnflag = 3
             break
 
     fval = old_fval
@@ -251,7 +278,7 @@ def _minimize_bhhh(fun, x0, data, bounds = None, args = (), kwargs = {},
         print("         Current function value: %f" % fval)
         print("         Iterations: %d" % k)
         
-    result = OptimizeResult(fun = fval, jac = gfk, hess_inv = Hk, 
+    result = OptimizeResult(fun = fval, jac = gfk, 
                             status = warnflag,
                             success = (warnflag == 0), 
                             message = msg, x = xk, nit = k)
