@@ -1,13 +1,14 @@
 # flake8: noqa
 import numpy as np
-from grad_hessian_vectorized import approx_fprime_ind
-from grad_hessian_vectorized import approx_hess_bhhh
 from scipy.optimize.optimize import _check_unknown_options
 from scipy.optimize.optimize import _line_search_wolfe12
 from scipy.optimize.optimize import _LineSearchError
 from scipy.optimize.optimize import _status_message
 from scipy.optimize.optimize import OptimizeResult
 from scipy.optimize.optimize import vecnorm
+
+from src.algorithms.grad_hessian_vectorized import approx_fprime_ind
+from src.algorithms.grad_hessian_vectorized import approx_hess_bhhh
 
 
 # Minimization function.
