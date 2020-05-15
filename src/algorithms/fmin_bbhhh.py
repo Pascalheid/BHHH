@@ -23,7 +23,7 @@ def fmin_bhhh(
     maxiter=None,
     full_output=0,
     disp=1,
-    retall=True,
+    retall=False,
     callback=None,
 ):
     """
