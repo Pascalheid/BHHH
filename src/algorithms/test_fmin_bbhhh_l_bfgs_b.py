@@ -31,7 +31,7 @@ def setup_data():
 
 def test_fmin_bhhh(setup_data):
     theta_est = fmin_bhhh(
-        setup_data["fun"], setup_data["theta_start"], setup_data["data"]
+        setup_data["fun"], setup_data["theta_start"], args=setup_data["data"]
     )["x"]
     assert np.allclose(theta_est, setup_data["theta_ml"])
 
