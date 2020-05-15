@@ -1,84 +1,36 @@
 # flake8: noqa
 import numpy as np
-from numba import jit
 from scipy.optimize._numdiff import approx_derivative
 
-# Mögliche Beispiele sind Logit, OLS, etc.
-# Calculate the gradient of the loss
 
-
-def approx_fprime_ind(fun, x0, data, args=(), kwargs={}):
+def wrap_function_agg(function, args):
+    """
+    Wrap function for the objective function in the BHHH.
 
     """
-    Calculate the gradient with respect to the coefficient vector b for every
-    row in the data array.
+    ncalls = [0]
+    if function is None:
+        return ncalls, None
 
-    Parameters
-    ----------
-    fun : callable fun(x, data, *args, **kwargs)
-        loss function.
-    x0 : ndarray
-        Parameters for which we want to calculate the derivative.
-    epsilon : int or ndarray, optional
-        If fprime is approximated, use this value for the step size.
-    data : ndarray
-        Data on which to calculate the likelihood function.
-    nobs : int, optional
-        Argument that passes the number of rows in a dataset.
-    args, kwargs : tuple and dict, optional
-        Additional function inputs. args is empty by default while kwargs
-        contains the data array.
+    def function_wrapper(*wrapper_args):
+        ncalls[0] += 1
+        return function(*(wrapper_args + args)).sum()
 
-    Returns
-    -------
-    grad_array : array
-        The partial derivatives of f w.r.t. x0 for every observation.
+    return ncalls, function_wrapper
 
+
+def wrap_function_num_dev(objective_fun, args):
+    """
+    Wrap function for the numerical Jacobian in the BHHH.
 
     """
-    kwargs_temp = kwargs.copy()
+    ncalls = [0]
 
-    try:
-        kwargs_temp.update({"data": data})
-        grad_array = approx_derivative(fun, x0, kwargs=kwargs_temp)
-        return grad_array
-    except IndexError:
-        print(f"Function {fun} couldn't be vectorized.")
+    def function_wrapper(x0):
+        ncalls[0] += 1
+        return approx_derivative(objective_fun, x0, args=args)
 
-    return grad_array
-
-
-# Hessian matrix approximation
-@jit(nopython=True)
-def approx_hess_bhhh(grad_array):
-    """
-    Approximating the Hessian matrix by calculating the sum of the outer
-    products of the gradients evaluated at each individual observation.
-
-    Parameters
-    ----------
-    grad_array : ndarray
-        An array containing the gradient of the objective function for every
-        individual.
-
-    Returns
-    -------
-    Hessian : ndarray
-        Approximated Hessian matrix resulting from the outer product of the
-        gradients.
-
-    """
-
-    nobs = grad_array.shape[0]
-    N = grad_array.shape[1]
-
-    outer_pdt = np.empty((nobs, N, N))
-
-    for i in range(nobs):
-
-        outer_pdt[i, :, :] = np.outer(grad_array[i], grad_array[i])
-
-    return outer_pdt.sum(axis=0)
+    return ncalls, function_wrapper
 
 
 def bfgsrecb(nt, sstore, ystore, pk, activeset):

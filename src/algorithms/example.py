@@ -2,8 +2,9 @@ import numpy as np
 import scipy.optimize as opt
 import scipy.stats as stats
 import statsmodels.api as sm
-from fmin_bbhhh import fmin_bhhh
-from fmin_l_bfgs_b import fmin_l_bfgs_b
+
+from src.algorithms.fmin_bbhhh import fmin_bhhh
+from src.algorithms.fmin_l_bfgs_b import fmin_l_bfgs_b
 
 # Define normal density for regression
 # Set seed
@@ -61,7 +62,7 @@ def sum_neg_log_bin_logistic(x0):
 
 # Starting point (1, 1)
 x0 = np.ones(2)
-fmin_bhhh(neg_log_binary_logistic, x0, data)
+res = fmin_bhhh(fun=neg_log_binary_logistic, x0=x0, args=data)
 fmin_l_bfgs_b(sum_neg_log_bin_logistic, x0)
 sm.Logit(data[:, 0], data[:, 1:]).fit().summary()
 opt.fmin_l_bfgs_b(sum_neg_log_bin_logistic, x0, approx_grad=1)
@@ -71,7 +72,7 @@ opt.fmin_l_bfgs_b(sum_neg_log_bin_logistic, x0, approx_grad=1)
 bounds = np.array([[-5, -5], [5, 5]])  # Lower Bound  # Upper Bound
 
 # Report number of iterations
-fmin_bhhh(neg_log_binary_logistic, x0, data, bounds=bounds)
+fmin_bhhh(neg_log_binary_logistic, x0, bounds, args=data)
 fmin_l_bfgs_b(sum_neg_log_bin_logistic, x0, bounds=bounds)
 opt.fmin_l_bfgs_b(
     sum_neg_log_bin_logistic, x0, approx_grad=1, bounds=[(-5, 5), (-5, 5)]
@@ -81,6 +82,6 @@ opt.fmin_l_bfgs_b(
 bounds = np.array([[1, 0], [5, 5]])  # Lower Bound  # Upper Bound
 
 # Report number of iterations
-fmin_bhhh(neg_log_binary_logistic, x0, data, bounds=bounds)
+fmin_bhhh(neg_log_binary_logistic, x0, bounds, args=data)
 fmin_l_bfgs_b(sum_neg_log_bin_logistic, x0, bounds=bounds)
 opt.fmin_l_bfgs_b(sum_neg_log_bin_logistic, x0, approx_grad=1, bounds=[(1, 5), (0, 5)])

@@ -6,20 +6,18 @@ from scipy.optimize.optimize import _LineSearchError
 from scipy.optimize.optimize import _status_message
 from scipy.optimize.optimize import OptimizeResult
 from scipy.optimize.optimize import vecnorm
+from scipy.optimize.optimize import wrap_function
 
-from src.algorithms.grad_hessian_vectorized import approx_fprime_ind
-from src.algorithms.grad_hessian_vectorized import approx_hess_bhhh
+from src.algorithms.grad_hessian_vectorized import wrap_function_agg
+from src.algorithms.grad_hessian_vectorized import wrap_function_num_dev
 
 
-# Minimization function.
 def fmin_bhhh(
     fun,
     x0,
-    data,
     bounds=None,
     fprime=None,
     args=(),
-    kwargs={},
     tol={"abs": 1e-05, "rel": 1e-08},
     norm=np.Inf,
     maxiter=None,
@@ -37,14 +35,12 @@ def fmin_bhhh(
         Objective function to be minimized.
     x0 : ndarray
         Initial guess.
-    fprime : callable f'(x,*args), optional
-        Gradient of f.
-    data : ndarray
-        Data points on which to fit the likelihood function to.
     bounds : ndarray, optional
         ``(min, max)`` pairs for each element along the rows``x``, defining
         the bounds on that parameter. Use +-inf for one of ``min`` or
         ``max`` when there is no bound in that direction.
+    fprime : callable f'(x,*args), optional
+        Gradient of f.
     args : tuple, optional
         Extra arguments passed to f and fprime.
     tol : dict, optional
@@ -70,24 +66,28 @@ def fmin_bhhh(
 
     Returns
     -------
-    xopt : ndarray
+    x : ndarray
         Parameters which minimize f, i.e. f(xopt) == fopt.
-    fopt : float
+    fun : float
         Minimum value.
-    gopt : ndarray
+    jac : ndarray
         Value of gradient at minimum, f'(xopt), which should be near 0.
-    Bopt : ndarray
+    hess_inv : ndarray
         Value of 1/f''(xopt), i.e. the inverse hessian matrix.
-    func_calls : int
+    nfev : int
         Number of function_calls made.
-    grad_calls : int
+    njev : int
         Number of gradient calls made.
     warnflag : integer
         1 : Maximum number of iterations exceeded.
         2 : Gradient and/or function calls not changing.
         3 : NaN result encountered.
+    message : str
+        Status message on whether the optimizer converged.
+    success : bool
+        Indicating whether optimizer converged.
     allvecs  :  list
-        The value of xopt at each iteration.  Only returned if retall is True.
+        The value of x at each iteration.  Only returned if retall is True.
 
     Notes
     -----
@@ -106,6 +106,9 @@ def fmin_bhhh(
     Bachelor-Thesis University of Konstanz.
 
     """
+    if not isinstance(args, tuple):
+        args = (args,)
+
     opts = {
         "tol": tol,
         "norm": norm,
@@ -114,9 +117,7 @@ def fmin_bhhh(
         "return_all": retall,
     }
 
-    res = _minimize_bhhh(
-        fun, x0, data, bounds, args, kwargs, fprime, callback=callback, **opts
-    )
+    res = _minimize_bhhh(fun, x0, bounds, args, fprime, callback=callback, **opts)
 
     return res
 
@@ -124,10 +125,8 @@ def fmin_bhhh(
 def _minimize_bhhh(
     fun,
     x0,
-    data,
     bounds=None,
     args=(),
-    kwargs={},
     jac=None,
     callback=None,
     tol={"abs": 1e-05, "rel": 1e-08},
@@ -153,11 +152,11 @@ def _minimize_bhhh(
         Order of norm (Inf is max, -Inf is min).
 
     """
+
     _check_unknown_options(unknown_options)
 
     f = fun
     fprime = jac
-    # epsilon = eps Add functionality
     retall = return_all
     k = 0
     N = len(x0)
@@ -180,16 +179,15 @@ def _minimize_bhhh(
         maxiter = len(x0) * 200
 
     # Need the aggregate functions to take only x0 as an argument
-    def agg_fun(x0):
-        return f(x0, data, *args, **kwargs).sum()
+    func_calls, agg_fun = wrap_function_agg(f, args)
 
     if not callable(fprime):
-        myfprime = approx_fprime_ind
+        grad_calls, myfprime = wrap_function_num_dev(f, args)
     else:
-        myfprime = fprime
+        grad_calls, myfprime = wrap_function(fprime, args)
 
     def agg_fprime(x0):
-        return myfprime(f, x0, data, args, kwargs).sum(axis=0)
+        return myfprime(x0).sum(axis=0)
 
     # Setup for iteration
     old_fval = agg_fun(x0)
@@ -207,7 +205,7 @@ def _minimize_bhhh(
     for _ in range(maxiter):  # for loop instead.
 
         # Individual
-        gfk_obs = myfprime(f, xk, data, args, kwargs)
+        gfk_obs = myfprime(xk)
 
         # Aggregate fprime. Might replace by simply summing up gfk_obs
         gfk = gfk_obs.sum(axis=0)
@@ -221,7 +219,7 @@ def _minimize_bhhh(
         old_old_fval = old_fval + np.linalg.norm(gfk) / 2
 
         # Calculate BHHH hessian and step
-        Hk = approx_hess_bhhh(gfk_obs)  # Yes
+        Hk = np.dot(gfk_obs.T, gfk_obs)
         Bk = np.linalg.inv(Hk)
         pk = np.empty(N)
         pk = -np.dot(Bk, gfk)
@@ -278,7 +276,9 @@ def _minimize_bhhh(
     result = OptimizeResult(
         fun=fval,
         jac=gfk,
-        hess_inv=Hk,
+        hess_inv=Bk,
+        nfev=func_calls[0],
+        njev=grad_calls[0],
         status=warnflag,
         success=(warnflag == 0),
         message=msg,
