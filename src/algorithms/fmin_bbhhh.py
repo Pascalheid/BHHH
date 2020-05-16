@@ -21,7 +21,6 @@ def fmin_bhhh(
     tol={"abs": 1e-05, "rel": 1e-08},
     norm=np.Inf,
     maxiter=None,
-    full_output=0,
     disp=1,
     retall=False,
     callback=None,
@@ -56,9 +55,6 @@ def fmin_bhhh(
         current parameter vector.
     maxiter : int, optional
         Maximum number of iterations to perform.
-    full_output : bool, optional
-        If True,return fopt, func_calls, grad_calls, and warnflag
-        in addition to xopt.
     disp : bool, optional
         Print convergence message if True.
     retall : bool, optional
